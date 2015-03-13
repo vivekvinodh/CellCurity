@@ -10,9 +10,30 @@ import android.view.View;
 import android.widget.Button;
 import android.content.DialogInterface;
 import android.widget.TextView;
-
+import android.media.MediaRecorder;
+import java.io.IOException;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import android.app.Activity;
+import android.media.AudioFormat;
+import android.media.AudioRecord;
+import android.util.Log;
+import android.view.View.OnClickListener;
 
 public class MainActivity extends ActionBarActivity {
+
+    public byte[] buffer;
+    public static DatagramSocket socket;
+    private int port=50005;
+    AudioRecord recorder;
+
+    private int sampleRate = 44100;
+    private int channelConfig = AudioFormat.CHANNEL_CONFIGURATION_MONO;
+    private int audioFormat = AudioFormat.ENCODING_PCM_16BIT;
+    int minBufSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat);
+    private boolean status = true;
 
     boolean system_setting_status;
 
@@ -28,6 +49,8 @@ public class MainActivity extends ActionBarActivity {
             @Override
             public void onClick(View view) {
                 system_setting_status = true;
+                status = true;
+                startStreaming();
                 TextView SystemStatus = (TextView) findViewById(R.id.SystemStatus);
                 SystemStatus.setText("System Armed");
             }
@@ -41,6 +64,9 @@ public class MainActivity extends ActionBarActivity {
             @Override
             public void onClick(View view) {
                 system_setting_status = false;
+                status = false;
+                recorder.release();
+                Log.d("VS","Recorder released");
                 TextView SystemStatus = (TextView) findViewById(R.id.SystemStatus);
                 SystemStatus.setText("System Disarmed");
             }
@@ -56,6 +82,62 @@ public class MainActivity extends ActionBarActivity {
         getMenuInflater().inflate(R.menu.menu_main, menu);
         return true;
 
+    }
+
+    public void startStreaming() {
+
+
+        Thread streamThread = new Thread(new Runnable() {
+
+            @Override
+            public void run() {
+                try {
+
+                    DatagramSocket socket = new DatagramSocket();
+                    Log.d("VS", "Socket Created");
+
+                    byte[] buffer = new byte[minBufSize];
+
+                    Log.d("VS","Buffer created of size " + minBufSize);
+                    DatagramPacket packet;
+
+                    final InetAddress destination = InetAddress.getByName("192.168.1.5");
+                    Log.d("VS", "Address retrieved");
+
+
+                    recorder = new AudioRecord(MediaRecorder.AudioSource.MIC,sampleRate,channelConfig,audioFormat,minBufSize*10);
+                    Log.d("VS", "Recorder initialized");
+
+                    recorder.startRecording();
+
+
+                    while(status == true) {
+
+
+                        //reading data from MIC into buffer
+                        minBufSize = recorder.read(buffer, 0, buffer.length);
+
+                        //putting buffer in the packet
+                        packet = new DatagramPacket (buffer,buffer.length,destination,port);
+
+                        socket.send(packet);
+                        System.out.println("MinBufferSize: " +minBufSize);
+
+
+                    }
+
+
+
+                } catch(UnknownHostException e) {
+                    Log.e("VS", "UnknownHostException");
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    Log.e("VS", "IOException");
+                }
+            }
+
+        });
+        streamThread.start();
     }
 
     @Override
